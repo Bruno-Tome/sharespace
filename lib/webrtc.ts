@@ -1,9 +1,31 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 type S = { type: "offer" | "answer" | "ice"; payload: any; from: string; to?: string };
-export function useWebRTC(roomId: string, participantId: string, participantIds: string[]) { const [remote, setRemote] = useState<MediaStream | null>(null); const [status, setStatus] = useState("Conectando"); const peers = useRef(new Map<string, RTCPeerConnection>()); const stream = useRef<MediaStream | null>(null);
- const send = useCallback((s: S) => fetch(`/api/signal?roomId=${roomId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(s) }), [roomId]);
- const connectPeer = useCallback(async (id: string, initiator: boolean) => { if (id === participantId || peers.current.has(id)) return; const pc = new RTCPeerConnection({ iceServers: [{ urls: process.env.NEXT_PUBLIC_STUN_SERVER_URL || "stun:stun.l.google.com:19302" }] }); peers.current.set(id, pc); stream.current?.getTracks().forEach((t) => pc.addTrack(t, stream.current!)); pc.ontrack = (e) => setRemote(e.streams[0] ?? null); pc.onicecandidate = (e) => e.candidate && void send({ type: "ice", payload: e.candidate.toJSON(), from: participantId, to: id }); pc.onconnectionstatechange = () => { if (["connected", "connecting"].includes(pc.connectionState)) setStatus("Conectado"); }; if (initiator) { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await send({ type: "offer", payload: offer, from: participantId, to: id }); } }, [participantId, send]);
- useEffect(() => { if (!participantId) return; for (const id of participantIds) if (participantId < id) void connectPeer(id, true); }, [connectPeer, participantId, participantIds.join(",")]);
- useEffect(() => { let alive = true; const poll = async () => { if (!alive || !participantId) return; const r = await fetch(`/api/signal?roomId=${roomId}&participantId=${participantId}`, { cache: "no-store" }).catch(() => null); if (!r?.ok) return; const d = await r.json(); for (const s of d.signals as S[]) { await connectPeer(s.from, false); const pc = peers.current.get(s.from); if (!pc) continue; if (s.type === "offer") { await pc.setRemoteDescription(s.payload); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); await send({ type: "answer", payload: answer, from: participantId, to: s.from }); } else if (s.type === "answer") await pc.setRemoteDescription(s.payload); else await pc.addIceCandidate(s.payload); } }; const timer = window.setInterval(() => void poll(), 700); void poll(); return () => { alive = false; window.clearInterval(timer); peers.current.forEach((p) => p.close()); }; }, [connectPeer, participantId, roomId, send]);
- const setStream = useCallback((next: MediaStream | null) => { stream.current = next; peers.current.forEach((pc, id) => { next?.getTracks().forEach((t) => pc.addTrack(t, next)); void (async () => { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await send({ type: "offer", payload: offer, from: participantId, to: id }); })(); }); }, [participantId, send]); return { remote, status, setStream }; }
+
+export function useWebRTC(roomId: string, participantId: string, participantIds: string[]) {
+  const [remote, setRemote] = useState<MediaStream | null>(null);
+  const [status, setStatus] = useState("Conectando");
+  const peers = useRef(new Map<string, RTCPeerConnection>());
+  const stream = useRef<MediaStream | null>(null);
+  const iceServers = [{ urls: process.env.NEXT_PUBLIC_STUN_SERVER_URL || "stun:stun.l.google.com:19302" }, ...(process.env.NEXT_PUBLIC_TURN_SERVER_URL ? [{ urls: process.env.NEXT_PUBLIC_TURN_SERVER_URL, username: process.env.NEXT_PUBLIC_TURN_USERNAME, credential: process.env.NEXT_PUBLIC_TURN_PASSWORD }] : [])];
+  const send = useCallback((s: S) => fetch(`/api/signal?roomId=${roomId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(s) }), [roomId]);
+  const connectPeer = useCallback(async (id: string, initiator: boolean) => {
+    if (id === participantId || peers.current.has(id)) return;
+    const pc = new RTCPeerConnection({ iceServers });
+    peers.current.set(id, pc);
+    stream.current?.getTracks().forEach((t) => pc.addTrack(t, stream.current!));
+    pc.ontrack = (e) => setRemote(e.streams[0] ?? null);
+    pc.onicecandidate = (e) => e.candidate && void send({ type: "ice", payload: e.candidate.toJSON(), from: participantId, to: id });
+    pc.onconnectionstatechange = () => { if (pc.connectionState === "connected") setStatus("Conectado"); if (["failed", "disconnected"].includes(pc.connectionState)) setStatus("Conexão instável"); };
+    if (initiator) { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await send({ type: "offer", payload: offer, from: participantId, to: id }); }
+  }, [participantId, send, iceServers]);
+  const idsKey = participantIds.join(",");
+  useEffect(() => { if (participantId) for (const id of participantIds) if (participantId < id) void connectPeer(id, true); }, [connectPeer, participantId, idsKey]);
+  useEffect(() => {
+    let alive = true; const pending = new Map<string, RTCIceCandidateInit[]>();
+    const poll = async () => { if (!alive || !participantId) return; const r = await fetch(`/api/signal?roomId=${roomId}&participantId=${participantId}`, { cache: "no-store" }).catch(() => null); if (!r?.ok) return; const d = await r.json(); for (const s of d.signals as S[]) { await connectPeer(s.from, false); const pc = peers.current.get(s.from); if (!pc) continue; if (s.type === "offer") { await pc.setRemoteDescription(s.payload); for (const c of pending.get(s.from) ?? []) await pc.addIceCandidate(c); pending.delete(s.from); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); await send({ type: "answer", payload: answer, from: participantId, to: s.from }); } else if (s.type === "answer") await pc.setRemoteDescription(s.payload); else if (pc.remoteDescription) await pc.addIceCandidate(s.payload); else pending.set(s.from, [...(pending.get(s.from) ?? []), s.payload]); } };
+    const timer = window.setInterval(() => void poll(), 700); void poll(); return () => { alive = false; window.clearInterval(timer); peers.current.forEach((p) => p.close()); };
+  }, [connectPeer, participantId, roomId, send]);
+  const setStream = useCallback((next: MediaStream | null) => { stream.current = next; peers.current.forEach((pc, id) => { next?.getTracks().forEach((t) => pc.addTrack(t, next)); void (async () => { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await send({ type: "offer", payload: offer, from: participantId, to: id }); })(); }); }, [participantId, send]);
+  return { remote, status, setStream };
+}
