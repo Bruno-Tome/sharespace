@@ -13,6 +13,7 @@ export function RoomView({ room: initial }: { room: Room }) {
   const [sharing, setSharing] = useState(false); const [local, setLocal] = useState<MediaStream | null>(null);
   const localVideo = useRef<HTMLVideoElement>(null); const remoteVideo = useRef<HTMLVideoElement>(null); const player = useRef<HTMLElement>(null);
   const rtc = useWebRTC(room.id, id, room.participants.map((p) => p.id)); const isSomeoneSharing = room.participants.some((p) => p.sharing);
+  useEffect(() => { player.current?.querySelector("button")?.remove(); }, []);
   useEffect(() => { if (localVideo.current) localVideo.current.srcObject = local; }, [local]);
   useEffect(() => { if (remoteVideo.current && rtc.remote) { remoteVideo.current.srcObject = rtc.remote; void remoteVideo.current.play().catch(() => undefined); } }, [rtc.remote, isSomeoneSharing]);
   useEffect(() => { if (!id) return; const refresh = async () => { setSyncing(true); try { const response = await fetch(`/api/rooms/${room.id}`, { cache: "no-store" }); if (response.ok) setRoom(await response.json()); } finally { setSyncing(false); } }; const timer = window.setInterval(() => void refresh(), 3000); return () => window.clearInterval(timer); }, [id, room.id]);
