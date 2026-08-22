@@ -3,7 +3,8 @@ import type { Room, Signal } from "./types";
 
 const TTL = 60 * 60 * 8;
 type State = Room & { signals: Signal[] };
-const memory = new Map<string, State>();
+const globalState = globalThis as typeof globalThis & { __sharespaceRooms?: Map<string, State> };
+const memory = globalState.__sharespaceRooms ?? (globalState.__sharespaceRooms = new Map<string, State>());
 const key = (id: string) => `sharespace:room:${id}`;
 const redisConfig = () => process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN }) : null;
 export function newRoom(hostId: string): Room { const now = Date.now(); return { id: crypto.randomUUID().replaceAll("-", "").slice(0, 10), createdAt: new Date(now).toISOString(), expiresAt: new Date(now + TTL * 1000).toISOString(), hostId, participants: [] }; }
