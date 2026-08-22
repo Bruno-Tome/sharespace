@@ -2,7 +2,7 @@ import { Redis } from "@upstash/redis";
 import type { Room, Signal } from "./types";
 
 const TTL = 60 * 60 * 8;
-export const PRESENCE_TTL = 15_000;
+export const PRESENCE_TTL = 60_000;
 type State = Room & { signals: Signal[] };
 const globalState = globalThis as typeof globalThis & { __sharespaceRooms?: Map<string, State> };
 const memory = globalState.__sharespaceRooms ?? (globalState.__sharespaceRooms = new Map<string, State>());

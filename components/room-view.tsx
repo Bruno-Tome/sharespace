@@ -53,19 +53,6 @@ export function RoomView({ room: initial }: { room: Room }) {
     void refresh();
     return () => window.clearInterval(timer);
   }, [id, room.id]);
-  useEffect(() => {
-    if (!id) return;
-    const leaveOnExit = () => {
-      void fetch(`/api/rooms/${room.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ participantId: id, action: "leave" }),
-        keepalive: true,
-      });
-    };
-    window.addEventListener("pagehide", leaveOnExit);
-    return () => window.removeEventListener("pagehide", leaveOnExit);
-  }, [id, room.id]);
   async function join(e: React.FormEvent) {
     e.preventDefault();
     const r = await fetch(`/api/rooms/${room.id}`, {
