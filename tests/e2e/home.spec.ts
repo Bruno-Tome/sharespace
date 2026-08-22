@@ -1,0 +1,2 @@
+import { test, expect } from "@playwright/test";
+test("shows seeded rooms and creates a new room", async ({ page }) => { await page.goto("/"); await expect(page.getByRole("heading", { name: "Open rooms" })).toBeVisible(); await page.getByRole("button", { name: "+ New room" }).click(); await page.getByPlaceholder("Sunday studio").fill("Playwright room"); await page.getByRole("button", { name: "Create room" }).click(); await expect(page.getByText("Playwright room")).toBeVisible(); });

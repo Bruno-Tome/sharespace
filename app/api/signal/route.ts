@@ -1,0 +1,6 @@
+import { NextResponse } from "next/server";
+import { addSignal, consumeSignals, getRoom } from "@/lib/room-store";
+import { signalSchema } from "@/lib/validation";
+export const runtime = "nodejs";
+export async function GET(req: Request) { const url = new URL(req.url); const roomId = url.searchParams.get("roomId"); const participantId = url.searchParams.get("participantId"); if (!roomId || !participantId || !(await getRoom(roomId))) return NextResponse.json({ error: "Sessão inválida." }, { status: 403 }); const result = await consumeSignals(roomId, participantId); return NextResponse.json(result); }
+export async function POST(req: Request) { const url = new URL(req.url); const roomId = url.searchParams.get("roomId"); const parsed = signalSchema.safeParse(await req.json().catch(() => null)); const room = roomId ? await getRoom(roomId) : null; if (!roomId || !room || !parsed.success || !room.participants.some((p) => p.id === parsed.data.from)) return NextResponse.json({ error: "Sinal inválido." }, { status: 400 }); await addSignal(roomId, { id: crypto.randomUUID(), from: parsed.data.from, to: parsed.data.to, type: parsed.data.type, payload: parsed.data.payload }); return NextResponse.json({ ok: true }); }
