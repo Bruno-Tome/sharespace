@@ -6,7 +6,11 @@ type State = Room & { signals: Signal[] };
 const globalState = globalThis as typeof globalThis & { __sharespaceRooms?: Map<string, State> };
 const memory = globalState.__sharespaceRooms ?? (globalState.__sharespaceRooms = new Map<string, State>());
 const key = (id: string) => `sharespace:room:${id}`;
-const redisConfig = () => process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN }) : null;
+const redisConfig = () => {
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.REDIS_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.REDIS_TOKEN;
+  return url && token ? new Redis({ url, token }) : null;
+};
 export function newRoom(hostId: string): Room { const now = Date.now(); return { id: crypto.randomUUID().replaceAll("-", "").slice(0, 10), createdAt: new Date(now).toISOString(), expiresAt: new Date(now + TTL * 1000).toISOString(), hostId, participants: [] }; }
 export async function getRoom(id: string) { const redis = redisConfig(); const room = redis ? await redis.get<State>(key(id)) : memory.get(id); if (!room || Date.parse(room.expiresAt) < Date.now()) return null; return room; }
 export async function saveRoom(room: Room, signals?: Signal[]) { const previous = "signals" in room ? (room as State).signals : []; const state = { ...room, signals: signals ?? previous }; const redis = redisConfig(); if (redis) await redis.set(key(room.id), state, { ex: TTL }); else memory.set(room.id, state); return room; }
