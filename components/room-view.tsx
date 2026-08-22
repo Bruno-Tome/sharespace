@@ -6,23 +6,268 @@ import type { Room } from "@/lib/types";
 import { useWebRTC } from "@/lib/webrtc";
 
 export function RoomView({ room: initial }: { room: Room }) {
-  const router = useRouter(); const search = useSearchParams();
-  const [room, setRoom] = useState(initial); const [name, setName] = useState("");
-  const [id, setId] = useState(search.get("host") || search.get("participant") || "");
-  const [error, setError] = useState(""); const [copied, setCopied] = useState(false); const [syncing, setSyncing] = useState(false);
-  const [sharing, setSharing] = useState(false); const [local, setLocal] = useState<MediaStream | null>(null);
-  const localVideo = useRef<HTMLVideoElement>(null); const remoteVideo = useRef<HTMLVideoElement>(null); const player = useRef<HTMLElement>(null);
-  const rtc = useWebRTC(room.id, id, room.participants.map((p) => p.id)); const isSomeoneSharing = room.participants.some((p) => p.sharing);
-  useEffect(() => { player.current?.querySelector("button")?.remove(); }, []);
-  useEffect(() => { if (localVideo.current) localVideo.current.srcObject = local; }, [local]);
-  useEffect(() => { if (remoteVideo.current && rtc.remote) { remoteVideo.current.srcObject = rtc.remote; void remoteVideo.current.play().catch(() => undefined); } }, [rtc.remote, isSomeoneSharing]);
-  useEffect(() => { if (!id) return; const refresh = async () => { setSyncing(true); try { const response = await fetch(`/api/rooms/${room.id}`, { cache: "no-store" }); if (response.ok) setRoom(await response.json()); } finally { setSyncing(false); } }; const timer = window.setInterval(() => void refresh(), 3000); return () => window.clearInterval(timer); }, [id, room.id]);
-  async function join(e: React.FormEvent) { e.preventDefault(); const r = await fetch(`/api/rooms/${room.id}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, participantId: id || undefined }) }); const d = await r.json(); if (!r.ok) return setError(d.error); setRoom(d.room); setId(d.participantId); router.replace(`/room/${room.id}?participant=${d.participantId}`, { scroll: false }); }
-  async function share() { try { const s = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }); s.getVideoTracks()[0].onended = () => void stop(); setLocal(s); rtc.setStream(s); const r = await fetch(`/api/rooms/${room.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId: id, action: "share", value: true }) }); if (!r.ok) { s.getTracks().forEach((t) => t.stop()); setLocal(null); setError((await r.json()).error); return; } setSharing(true); } catch { setError("O navegador não permitiu o compartilhamento."); } }
-  async function stop() { local?.getTracks().forEach((t) => t.stop()); setLocal(null); setSharing(false); await fetch(`/api/rooms/${room.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId: id, action: "share", value: false }) }); }
-  async function leave() { await fetch(`/api/rooms/${room.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ participantId: id, action: "leave" }) }); router.push("/"); }
-  async function invite() { try { await navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}`); setCopied(true); window.setTimeout(() => setCopied(false), 2200); } catch { setError("Não foi possível copiar o convite."); } }
+  const router = useRouter();
+  const search = useSearchParams();
+  const [room, setRoom] = useState(initial);
+  const [name, setName] = useState("");
+  const [id, setId] = useState(
+    search.get("host") || search.get("participant") || "",
+  );
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [local, setLocal] = useState<MediaStream | null>(null);
+  const localVideo = useRef<HTMLVideoElement>(null);
+  const remoteVideo = useRef<HTMLVideoElement>(null);
+  const player = useRef<HTMLElement>(null);
+  const rtc = useWebRTC(
+    room.id,
+    id,
+    room.participants.map((p) => p.id),
+  );
+  const isSomeoneSharing = room.participants.some((p) => p.sharing);
+  useEffect(() => {
+    if (localVideo.current) localVideo.current.srcObject = local;
+  }, [local]);
+  useEffect(() => {
+    if (remoteVideo.current && rtc.remote) {
+      remoteVideo.current.srcObject = rtc.remote;
+      void remoteVideo.current.play().catch(() => undefined);
+    }
+  }, [rtc.remote, isSomeoneSharing]);
+  useEffect(() => {
+    if (!id) return;
+    const refresh = async () => {
+      setSyncing(true);
+      try {
+        const response = await fetch(`/api/rooms/${room.id}`, {
+          cache: "no-store",
+        });
+        if (response.ok) setRoom(await response.json());
+      } finally {
+        setSyncing(false);
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 3000);
+    return () => window.clearInterval(timer);
+  }, [id, room.id]);
+  async function join(e: React.FormEvent) {
+    e.preventDefault();
+    const r = await fetch(`/api/rooms/${room.id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, participantId: id || undefined }),
+    });
+    const d = await r.json();
+    if (!r.ok) return setError(d.error);
+    setRoom(d.room);
+    setId(d.participantId);
+    router.replace(`/room/${room.id}?participant=${d.participantId}`, {
+      scroll: false,
+    });
+  }
+  async function share() {
+    try {
+      const s = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      s.getVideoTracks()[0].onended = () => void stop();
+      setLocal(s);
+      rtc.setStream(s);
+      const r = await fetch(`/api/rooms/${room.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          participantId: id,
+          action: "share",
+          value: true,
+        }),
+      });
+      if (!r.ok) {
+        s.getTracks().forEach((t) => t.stop());
+        setLocal(null);
+        setError((await r.json()).error);
+        return;
+      }
+      setSharing(true);
+    } catch {
+      setError("O navegador não permitiu o compartilhamento.");
+    }
+  }
+  async function stop() {
+    local?.getTracks().forEach((t) => t.stop());
+    setLocal(null);
+    setSharing(false);
+    await fetch(`/api/rooms/${room.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        participantId: id,
+        action: "share",
+        value: false,
+      }),
+    });
+  }
+  async function leave() {
+    await fetch(`/api/rooms/${room.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ participantId: id, action: "leave" }),
+    });
+    router.push("/");
+  }
+  async function invite() {
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}${window.location.pathname}`,
+      );
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2200);
+    } catch {
+      setError("Não foi possível copiar o convite.");
+    }
+  }
   const me = room.participants.find((p) => p.id === id);
-  if (!me) return <main className="glow min-h-screen"><div className="mx-auto max-w-md px-5 py-6"><Link href="/" className="font-semibold">ShareSpace</Link><form onSubmit={join} className="panel mt-24 rounded-3xl p-7"><p className="eyebrow">SALA {room.id}</p><h1 className="mt-3 text-3xl font-semibold">Como podemos te chamar?</h1><input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" className="mt-7 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none"/>{error && <p className="mt-3 text-sm text-rose-300">{error}</p>}<button className="mt-5 w-full rounded-xl bg-white py-3 font-semibold text-zinc-950">Entrar na sala</button></form></div></main>;
-  return <main className="glow min-h-screen"><div className="mx-auto max-w-6xl px-5 py-6"><header className="flex items-center justify-between"><Link href="/" className="font-semibold">ShareSpace</Link><div className="flex items-center gap-3"><span className="text-xs text-zinc-500" aria-live="polite">{syncing && "Sincronizando…"}</span><button onClick={() => void invite()} className="rounded-full border border-white/10 px-4 py-2 text-sm">{copied ? "Convite copiado ✓" : "Copiar convite"}</button></div></header><div className="mt-10 flex items-end justify-between"><div><p className="eyebrow">SALA PRIVADA</p><h1 className="mt-2 text-4xl font-semibold tracking-tight">Compartilhe sua tela</h1></div><span className="text-sm text-emerald-300">● {rtc.status}</span></div><div className="mt-8 grid gap-5 lg:grid-cols-[1fr_280px]"><section ref={player} className="panel relative aspect-video overflow-hidden rounded-3xl">{isSomeoneSharing ? <video ref={remoteVideo} autoPlay playsInline onLoadedMetadata={(e) => void e.currentTarget.play().catch(() => undefined)} className="h-full w-full object-contain" /> : <div className="grid h-full place-items-center text-center"><div><div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-violet-500/20 text-2xl">▣</div><h2 className="mt-4 text-xl">Ninguém está compartilhando</h2><p className="mt-2 text-sm text-zinc-500">Sua tela aparece aqui para todos na sala.</p></div></div>}<button onClick={() => document.fullscreenElement ? void document.exitFullscreen() : void player.current?.requestFullscreen()} className="absolute right-4 top-4 rounded-lg bg-black/60 px-3 py-2 text-sm text-white backdrop-blur" aria-label="Tela cheia">⛶ Tela cheia</button>{local && <video ref={localVideo} autoPlay muted playsInline className="absolute bottom-4 right-4 h-28 w-44 rounded-xl border border-white/20 object-cover"/>}</section><aside className="panel rounded-3xl p-5"><h2 className="font-medium">Participantes <span className="text-zinc-500">{room.participants.length}/8</span></h2><div className="mt-5 space-y-3">{room.participants.map((p) => <div key={p.id} className="flex items-center justify-between text-sm"><span>{p.name}{p.id === id && " (você)"}{p.host && <small className="ml-2 text-violet-300">host</small>}</span>{p.sharing && <span className="text-violet-300">compartilhando</span>}</div>)}</div></aside></div><div className="mt-5 flex flex-wrap gap-3"><button onClick={() => sharing ? void stop() : void share()} className="rounded-full bg-violet-500 px-6 py-3 font-semibold">{sharing ? "Parar compartilhamento" : "Compartilhar tela"}</button><button onClick={() => void leave()} className="rounded-full border border-white/10 px-6 py-3">Sair</button></div>{error && <p className="mt-4 text-sm text-rose-300">{error}</p>}<p className="mt-10 text-xs text-zinc-600">Compartilhe apenas conteúdo que você tem autorização para mostrar. A mídia não é gravada.</p></div></main>;
+  if (!me)
+    return (
+      <main className="glow min-h-screen">
+        <div className="mx-auto max-w-md px-5 py-6">
+          <Link href="/" className="font-semibold">
+            ShareSpace
+          </Link>
+          <form onSubmit={join} className="panel mt-24 rounded-3xl p-7">
+            <p className="eyebrow">SALA {room.id}</p>
+            <h1 className="mt-3 text-3xl font-semibold">
+              Como podemos te chamar?
+            </h1>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Seu nome"
+              className="mt-7 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none"
+            />
+            {error && <p className="mt-3 text-sm text-rose-300">{error}</p>}
+            <button className="mt-5 w-full rounded-xl bg-white py-3 font-semibold text-zinc-950">
+              Entrar na sala
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  return (
+    <main className="glow min-h-screen">
+      <div className="mx-auto max-w-6xl px-5 py-6">
+        <header className="flex items-center justify-between">
+          <Link href="/" className="font-semibold">
+            ShareSpace
+          </Link>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-zinc-500" aria-live="polite">
+              {syncing && "Sincronizando…"}
+            </span>
+            <button
+              onClick={() => void invite()}
+              className="rounded-full border border-white/10 px-4 py-2 text-sm"
+            >
+              {copied ? "Convite copiado ✓" : "Copiar convite"}
+            </button>
+          </div>
+        </header>
+        <div className="mt-10 flex items-end justify-between">
+          <div>
+            <p className="eyebrow">SALA PRIVADA</p>
+            <h1 className="mt-2 text-4xl font-semibold tracking-tight">
+              Compartilhe sua tela
+            </h1>
+          </div>
+          <span className="text-sm text-emerald-300">● {rtc.status}</span>
+        </div>
+        <div className="mt-8 grid gap-5 lg:grid-cols-[1fr_280px]">
+          <section
+            ref={player}
+            className="panel relative aspect-video overflow-hidden rounded-3xl"
+          >
+            <video
+              ref={remoteVideo}
+              autoPlay
+              playsInline
+              onLoadedMetadata={(e) =>
+                void e.currentTarget.play().catch(() => undefined)
+              }
+              className={`h-full w-full object-contain${isSomeoneSharing ? "" : " hidden"}`}
+            />
+            <div className={`grid h-full place-items-center text-center${isSomeoneSharing ? " hidden" : ""}`}>
+                <div>
+                  <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-violet-500/20 text-2xl">
+                    ▣
+                  </div>
+                  <h2 className="mt-4 text-xl">Ninguém está compartilhando</h2>
+                  <p className="mt-2 text-sm text-zinc-500">
+                    Sua tela aparece aqui para todos na sala.
+                  </p>
+                </div>
+              </div>
+            {local && (
+              <video
+                ref={localVideo}
+                autoPlay
+                muted
+                playsInline
+                className="absolute bottom-4 right-4 h-28 w-44 rounded-xl border border-white/20 object-cover"
+              />
+            )}
+          </section>
+          <aside className="panel rounded-3xl p-5">
+            <h2 className="font-medium">
+              Participantes{" "}
+              <span className="text-zinc-500">
+                {room.participants.length}/8
+              </span>
+            </h2>
+            <div className="mt-5 space-y-3">
+              {room.participants.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span>
+                    {p.name}
+                    {p.id === id && " (você)"}
+                    {p.host && (
+                      <small className="ml-2 text-violet-300">host</small>
+                    )}
+                  </span>
+                  {p.sharing && (
+                    <span className="text-violet-300">compartilhando</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            onClick={() => (sharing ? void stop() : void share())}
+            className="rounded-full bg-violet-500 px-6 py-3 font-semibold"
+          >
+            {sharing ? "Parar compartilhamento" : "Compartilhar tela"}
+          </button>
+          <button
+            onClick={() => void leave()}
+            className="rounded-full border border-white/10 px-6 py-3"
+          >
+            Sair
+          </button>
+        </div>
+        {error && <p className="mt-4 text-sm text-rose-300">{error}</p>}
+        <p className="mt-10 text-xs text-zinc-600">
+          Compartilhe apenas conteúdo que você tem autorização para mostrar. A
+          mídia não é gravada.
+        </p>
+      </div>
+    </main>
+  );
 }
