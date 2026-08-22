@@ -41,7 +41,7 @@ export function RoomView({ room: initial }: { room: Room }) {
     const refresh = async () => {
       setSyncing(true);
       try {
-        const response = await fetch(`/api/rooms/${room.id}`, {
+        const response = await fetch(`/api/rooms/${room.id}?participantId=${encodeURIComponent(id)}`, {
           cache: "no-store",
         });
         if (response.ok) setRoom(await response.json());
@@ -50,7 +50,21 @@ export function RoomView({ room: initial }: { room: Room }) {
       }
     };
     const timer = window.setInterval(() => void refresh(), 3000);
+    void refresh();
     return () => window.clearInterval(timer);
+  }, [id, room.id]);
+  useEffect(() => {
+    if (!id) return;
+    const leaveOnExit = () => {
+      void fetch(`/api/rooms/${room.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ participantId: id, action: "leave" }),
+        keepalive: true,
+      });
+    };
+    window.addEventListener("pagehide", leaveOnExit);
+    return () => window.removeEventListener("pagehide", leaveOnExit);
   }, [id, room.id]);
   async function join(e: React.FormEvent) {
     e.preventDefault();
