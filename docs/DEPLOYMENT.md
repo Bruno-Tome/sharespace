@@ -2,7 +2,7 @@
 
 ShareSpace uses an adapter boundary in `lib/room-store.ts`. With no environment variables it uses an in-memory store, which is ideal for local development but resets when the process restarts and is not shared between server instances.
 
-For Vercel, create an Upstash Redis database and add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` to the project environment. The aliases `REDIS_URL` and `REDIS_TOKEN` are also accepted. Redis is required in production: without it, the app uses process-local memory and rooms can disappear when a serverless instance changes or the development server restarts.
+For Vercel, configure the Upstash/Vercel KV variables `UPSTASH_REDIS_KV_REST_API_URL` and `UPSTASH_REDIS_KV_REST_API_TOKEN`. The read-only token is intentionally not used because room creation, presence, locks, and signaling require writes. `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` and `REDIS_URL`/`REDIS_TOKEN` remain supported as fallbacks. Redis is required in production: without it, the app uses process-local memory and rooms can disappear when a serverless instance changes or the development server restarts.
 
 ## Signaling limitations
 

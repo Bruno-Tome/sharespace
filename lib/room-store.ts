@@ -7,8 +7,8 @@ const globalState = globalThis as typeof globalThis & { __sharespaceRooms?: Map<
 const memory = globalState.__sharespaceRooms ?? (globalState.__sharespaceRooms = new Map<string, State>());
 const key = (id: string) => `sharespace:room:${id}`;
 const redisConfig = () => {
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.REDIS_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.REDIS_TOKEN;
+  const url = process.env.UPSTASH_REDIS_KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.REDIS_URL;
+  const token = process.env.UPSTASH_REDIS_KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || process.env.REDIS_TOKEN;
   return url && token ? new Redis({ url, token }) : null;
 };
 export function newRoom(hostId: string): Room { const now = Date.now(); return { id: crypto.randomUUID().replaceAll("-", "").slice(0, 10), createdAt: new Date(now).toISOString(), expiresAt: new Date(now + TTL * 1000).toISOString(), hostId, participants: [] }; }
