@@ -1,7 +1,38 @@
-node_modules
-.next
-out
+# Dependencies
+/node_modules/
+
+# Next.js build output
+/.next/
+/out/
+
+# Production output
+/build/
+/dist/
+
+# Test output
+/coverage/
+/playwright-report/
+/test-results/
+/blob-report/
+
+# Local environment files (keep the documented template)
 .env*
 !.env.example
-playwright-report
-test-results
+
+# TypeScript
+*.tsbuildinfo
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local tooling and editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Vercel
+.vercel/
