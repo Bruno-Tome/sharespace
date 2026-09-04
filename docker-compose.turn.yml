@@ -1,0 +1,55 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_STUN_SERVER_URL: ${NEXT_PUBLIC_STUN_SERVER_URL:-stun:stun.l.google.com:19302}
+        NEXT_PUBLIC_TURN_SERVER_URL: ${NEXT_PUBLIC_TURN_SERVER_URL}
+        NEXT_PUBLIC_TURN_USERNAME: ${NEXT_PUBLIC_TURN_USERNAME}
+        NEXT_PUBLIC_TURN_PASSWORD: ${NEXT_PUBLIC_TURN_PASSWORD}
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_STUN_SERVER_URL: ${NEXT_PUBLIC_STUN_SERVER_URL:-stun:stun.l.google.com:19302}
+      NEXT_PUBLIC_TURN_SERVER_URL: ${NEXT_PUBLIC_TURN_SERVER_URL}
+      NEXT_PUBLIC_TURN_USERNAME: ${NEXT_PUBLIC_TURN_USERNAME}
+      NEXT_PUBLIC_TURN_PASSWORD: ${NEXT_PUBLIC_TURN_PASSWORD}
+    depends_on:
+      turn:
+        condition: service_started
+
+  app-dev:
+    profiles: [dev]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${DEV_APP_PORT:-3001}:3000"
+    environment:
+      NEXT_PUBLIC_STUN_SERVER_URL: ${NEXT_PUBLIC_STUN_SERVER_URL:-stun:stun.l.google.com:19302}
+      NEXT_PUBLIC_TURN_SERVER_URL: ${NEXT_PUBLIC_TURN_SERVER_URL}
+      NEXT_PUBLIC_TURN_USERNAME: ${NEXT_PUBLIC_TURN_USERNAME}
+      NEXT_PUBLIC_TURN_PASSWORD: ${NEXT_PUBLIC_TURN_PASSWORD}
+    volumes:
+      - .:/app
+      - app_node_modules:/app/node_modules
+      - app_next:/app/.next
+    depends_on:
+      turn:
+        condition: service_started
+
+  turn:
+    build:
+      context: ./turn
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TURN_REALM: ${TURN_REALM}
+      TURN_USERNAME: ${TURN_USERNAME}
+      TURN_PASSWORD: ${TURN_PASSWORD}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP}
+
+volumes:
+  app_node_modules:
+  app_next:

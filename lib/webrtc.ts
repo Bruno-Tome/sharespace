@@ -2,12 +2,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 type S = { type: "offer" | "answer" | "ice"; payload: any; from: string; to?: string };
 
+export function getIceServers(env: Partial<Record<string, string | undefined>>) {
+  return [
+    { urls: env.NEXT_PUBLIC_STUN_SERVER_URL || "stun:stun.l.google.com:19302" },
+    ...(env.NEXT_PUBLIC_TURN_SERVER_URL
+      ? [{
+          urls: env.NEXT_PUBLIC_TURN_SERVER_URL,
+          username: env.NEXT_PUBLIC_TURN_USERNAME,
+          credential: env.NEXT_PUBLIC_TURN_PASSWORD,
+        }]
+      : []),
+  ];
+}
+
 export function useWebRTC(roomId: string, participantId: string, participantIds: string[]) {
   const [remote, setRemote] = useState<MediaStream | null>(null);
   const [status, setStatus] = useState("Conectando");
   const peers = useRef(new Map<string, RTCPeerConnection>());
   const stream = useRef<MediaStream | null>(null);
-  const iceServers = useMemo(() => [{ urls: process.env.NEXT_PUBLIC_STUN_SERVER_URL || "stun:stun.l.google.com:19302" }, ...(process.env.NEXT_PUBLIC_TURN_SERVER_URL ? [{ urls: process.env.NEXT_PUBLIC_TURN_SERVER_URL, username: process.env.NEXT_PUBLIC_TURN_USERNAME, credential: process.env.NEXT_PUBLIC_TURN_PASSWORD }] : [])], []);
+  const iceServers = useMemo(() => getIceServers(process.env), []);
   const send = useCallback((s: S) => fetch(`/api/signal?roomId=${roomId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(s) }), [roomId]);
   const connectPeer = useCallback(async (id: string, initiator: boolean) => {
     if (id === participantId || peers.current.has(id)) return;
