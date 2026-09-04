@@ -19,6 +19,8 @@ The current interface is in Brazilian Portuguese. The repository is a single Nex
 - Track presence with client polling and prune stale participants.
 - Expire room records eight hours after creation.
 - Keep state in memory for local work or in Upstash Redis for shared deployments.
+- Build a standalone production container or a bind-mounted development container.
+- Run a bundled coturn relay alongside the application on a Linux Docker host.
 - Collect Vercel Analytics and Speed Insights when supported by the deployment.
 
 ## Product flow
@@ -71,6 +73,10 @@ Browser A                                   Browser B
 | `lib/room-store.ts` | Memory/Redis selection, room lifetime, presence pruning, atomic Redis mutations, and signal queues |
 | `lib/validation.ts` | Zod schemas for joining, signaling, and the currently unused room metadata input |
 | `lib/types.ts` | Shared `Room`, `Participant`, and `Signal` shapes |
+| `Dockerfile` | Multi-stage Node 22 production image using Next.js standalone output |
+| `Dockerfile.dev` | Node 22 development image used by the optional Compose profile |
+| `docker-compose.turn.yml` | Application, development application, and host-networked coturn services |
+| `turn/` | coturn image, startup configuration, and deployment notes |
 
 All API routes use the Node.js runtime. There is no separate backend service, database schema, migration system, or WebSocket server in this repository.
 
@@ -172,6 +178,17 @@ The UI holds one remote `MediaStream`, which matches the current one-presenter p
 | `NEXT_PUBLIC_TURN_PASSWORD` | With authenticated TURN | Passed as the TURN credential |
 
 Because these variables are prefixed with `NEXT_PUBLIC_`, their values are included in client-side code. Do not use a long-lived privileged secret as a TURN credential; production systems should issue short-lived credentials.
+
+### Bundled coturn service
+
+`docker-compose.turn.yml` includes a coturn relay intended for a Linux host with a public IPv4 address. The service uses host networking so coturn can advertise the host address and relay traffic through it. Its generated configuration:
+
+- listens on UDP/TCP port `3478`;
+- relays UDP traffic through ports `49152–49252`;
+- uses long-term credentials supplied through environment variables;
+- disables its CLI, multicast peers, TLS, and DTLS.
+
+The relevant host firewall ports must be open. This bundled setup uses `turn:`, not `turns:`, and should be hardened before handling sensitive traffic.
 
 ## HTTP API
 
@@ -286,6 +303,28 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 The environment file is optional for local development. With the blank example values, the application uses its in-memory adapter.
 
+### Docker
+
+Build and run the standalone production image:
+
+```bash
+docker build -t sharespace .
+docker run --publish 3000:3000 sharespace
+```
+
+Public ICE variables are Next.js build-time values. Pass them as build arguments when creating an image that should use custom STUN/TURN servers.
+
+To run the application with the bundled TURN service on a Linux host, populate the variables expected by `docker-compose.turn.yml`, then run:
+
+```bash
+docker compose --env-file .env.turn -f docker-compose.turn.yml up -d --build
+```
+
+The production app binds to `APP_PORT` (default `3000`). The optional `dev` profile starts the bind-mounted development image on `DEV_APP_PORT` (default `3001`). See [`turn/README.md`](turn/README.md) for host networking and firewall details.
+
+> [!NOTE]
+> The TURN guide currently instructs users to copy `turn/.env.turn.example`, but that template is not present in the repository. Create `.env.turn` locally with the required values listed below; `.env*` files are excluded from Docker build context and ignored by Git.
+
 ## Environment variables
 
 | Variable | Purpose |
@@ -303,6 +342,12 @@ The environment file is optional for local development. With the blank example v
 | `NEXT_PUBLIC_TURN_SERVER_URL` | Optional TURN URL |
 | `NEXT_PUBLIC_TURN_USERNAME` | Optional TURN username |
 | `NEXT_PUBLIC_TURN_PASSWORD` | Optional TURN credential |
+| `TURN_REALM` | coturn authentication realm; required by the bundled TURN container |
+| `TURN_USERNAME` | Static username configured in coturn |
+| `TURN_PASSWORD` | Static password configured in coturn |
+| `TURN_EXTERNAL_IP` | Public IPv4 address advertised by coturn |
+| `APP_PORT` | Host port for the production Compose app; defaults to `3000` |
+| `DEV_APP_PORT` | Host port for the development Compose profile; defaults to `3001` |
 
 Local environment files are ignored by Git; `.env.example` remains tracked as the safe template.
 
@@ -331,6 +376,7 @@ The current suite covers:
 
 - defaults, trimming, and rejection in the room metadata Zod schema;
 - a minimal `RoomStore` contract exercised through a test-only implementation;
+- STUN fallback and configured TURN entries produced by `getIceServers`;
 - creating a room through the browser;
 - joining from a second browser and observing the participant in both clients.
 
@@ -362,8 +408,17 @@ The suite does **not** currently exercise the production memory/Redis store, Red
 ├── tests/
 │   ├── e2e/home.spec.ts
 │   ├── store.test.ts
-│   └── validation.test.ts
+│   ├── validation.test.ts
+│   └── webrtc.test.ts
+├── turn/
+│   ├── Dockerfile
+│   ├── README.md
+│   └── entrypoint.sh
 ├── .env.example
+├── .dockerignore
+├── Dockerfile
+├── Dockerfile.dev
+├── docker-compose.turn.yml
 ├── next.config.ts
 ├── playwright.config.ts
 ├── tailwind.config.ts
@@ -404,6 +459,9 @@ Participant IDs appear in the host/participant URL query string and act as beare
 - The one-presenter rule is checked before the atomic sharing mutation, so simultaneous claims can race.
 - The client renders only one remote stream and does not support multiple simultaneous presenters.
 - Stopping capture ends local tracks but does not explicitly remove RTCRtpSenders or renegotiate every peer.
+- The bundled coturn service uses static credentials exposed to the browser bundle and disables TLS/DTLS.
+- The bundled Compose TURN topology depends on Linux host networking and a directly reachable public IPv4 address.
+- The TURN documentation references a missing `turn/.env.turn.example` template.
 - Signal payloads are intentionally unstructured beyond their signal type.
 - The host is automatically named `Host`; there is no host rename flow or host-only control surface.
 - Optional room metadata fields and `roomInputSchema` are not wired into the current creation UI/API.
@@ -419,7 +477,7 @@ Before a public deployment:
 3. Add authentication, room authorization, and stronger participant sessions.
 4. Add request validation consistently to every mutation and signaling operation.
 5. Add rate limits and abuse protection to room and signal endpoints.
-6. Configure a TURN service with short-lived credentials.
+6. Configure a hardened TURN service with short-lived credentials; do not treat the bundled static, non-TLS configuration as a final production design.
 7. Replace or deliberately capacity-plan the polling-based signaling transport.
 8. Test WebRTC across NAT, corporate firewall, mobile, and multi-instance scenarios.
 9. Add observability for room creation, signaling failures, Redis errors, and peer connectivity without logging sensitive payloads.
